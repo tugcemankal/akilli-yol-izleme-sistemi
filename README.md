@@ -6,16 +6,16 @@
 [![Poisson](https://img.shields.io/badge/Model-Poisson_Distribution-purple?style=flat-square)]()
 [![License](https://img.shields.io/badge/License-Academic-green?style=flat-square)]()
 
-> **D400 Sahil Yolu boyunca 45 sensör düğümü, 3 LoRaWAN Gateway ve 3 otonom keşif drone'u ile
-> kaya düşmesi, sis ve kaygan yol risklerini gerçek zamanlı izleyen bir WSN simülasyonu.**
+> **D400 Sahil Yolu boyunca 45 sensör düğümü, 3 LoRaWAN Gateway ve otonom keşif drone'ları ile kaya düşmesi, sis ve kaygan yol risklerini gerçek zamanlı izleyen bir WSN simülasyonu (Ödev 1) ve bu verileri J48 & Naive Bayes algoritmalarıyla analiz edip tehlikeleri anında sınıflandıran Makine Öğrenmesi sistemi (Ödev 2).**
 
 ---
 
 ## 📋 İçindekiler
 
 - [Proje Hakkında](#-proje-hakkında)
-- [Matematiksel Model](#-matematiksel-model)
-- [Sistem Mimarisi](#-sistem-mimarisi)
+- [Ödev 1: WSN Simülasyonu ve Veri Üretimi](#-ödev-1-wsn-simülasyonu-ve-veri-üretimi)
+- [Ödev 2: Makine Öğrenmesi ile Trafik Sınıflandırma](#-ödev-2-makine-öğrenmesi-ile-trafik-sınıflandırma)
+- [Tam Sistem Akışı (İki Ödevin Bağlantısı)](#-tam-sistem-akışı-i̇ki-ödevin-bağlantısı)
 - [Donanım Bileşenleri](#-donanım-bileşenleri)
 - [Kurulum ve Çalıştırma](#-kurulum-ve-çalıştırma)
 - [Proje Yapısı](#-proje-yapısı)
@@ -38,10 +38,14 @@ gerçek zamanlı risk izleme ve erken uyarı yapan bir WSN sistemi simülasyonud
 | 🚁 Drone Üssü | 3 adet (otonom keşif filosu) |
 | 📡 Frekans Bandı | EU868 MHz |
 | ⚡ Protokol | LoRaWAN 1.0.3 |
+| 🧠 ML Algoritmaları | J48 Karar Ağacı (%79.1), Naive Bayes (%74.9) |
+| 📦 Veri Seti | 1596 kayıt, 4 özellik (Simülasyondan üretilen dataset.csv) |
 
 ---
 
-## 📐 Matematiksel Model
+## 📡 Ödev 1: WSN Simülasyonu ve Veri Üretimi
+
+### Matematiksel Model ve Poisson Dağılımı
 
 ### Poisson Dağılımı
 
@@ -129,6 +133,40 @@ R_slip = 0.40×humidity_norm + 0.35×rainfall_norm + 0.25×coldFactor
 │  [NodeDetailDialog] → Poisson tablosu, enerji, LoRa detayları        │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 🧠 Ödev 2: Makine Öğrenmesi ile Trafik Sınıflandırma
+
+Ödev 1'de sensörlerden toplanıp `.csv` formatında (veya UDP üzerinden canlı olarak) üretilen trafik paket özellikleri (paket boyutu, saniye başına byte, vb.), Ödev 2'de bir Makine Öğrenmesi (ML) modeli tarafından yorumlanır. Bu kısım, **"Yolun Beyni"** olarak işlev görür.
+
+### Veri Seti ve Özellikler
+Simülasyon ortamından `dataset.csv` adında **1596 kayıtlık** bir eğitim verisi üretilir. Kullanılan temel 4 özellik (feature):
+1. **avg_size (byte):** 5 sn'lik penceredeki paketlerin ortalama boyutu (SAFE olaylar küçük, KAYA düşmesi büyüktür).
+2. **bytes_per_sec:** Saniyede aktarılan bant genişliği yükü.
+3. **jitter_ms:** Paketler arası gecikme dalgalanması.
+4. **packet_count:** 5 saniyelik penceredeki toplam paket sayısı.
+
+### Sınıflandırma Algoritmaları (Weka)
+| Algoritma | Doğruluk | Makro F1 | Avantajları/Dezavantajları |
+|-----------|----------|----------|----------------------------|
+| **J48 (Karar Ağacı)** | **%79.1** | **0.777** | İnsan tarafından okunabilir kurallar üretir. **ROCK_FALL ve FOG ayrımında en iyisi.** |
+| **Naive Bayes** | %74.9 | 0.708 | SAFE sınıfını kusursuz öğrenir (%100 Recall) ama FOG/ROCK karmaşasında zorlanır. |
+
+*(Sistemlerin gerçekçi bir başarısını ölçmek için her iki algoritmada da **10-Fold Cross Validation** kullanılmıştır).*
+
+---
+
+## 🔗 Tam Sistem Akışı (İki Ödevin Bağlantısı)
+
+Ödev 1 (Simülasyon) ve Ödev 2 (Makine Öğrenmesi) tam entegre çalışır:
+
+1. **PC 1 (Veri Üreticisi):** Hava durumu bozulur veya ivmeölçer(MPU-6050) sarsıntı algılar. *Poisson süreci* lambda değerini fırlatır ve ağa yoğun/büyük UDP paketleri basılmaya başlar.
+2. **Wireshark & Ağ Aktarımı:** Bu UDP paketleri gerçek ağ arayüzü üzerinden 9876 portuna uçar.
+3. **PC 2 (Analiz Merkezi):** `Pcap4j` kütüphanesi portu dinler, gelen paketleri yakalar, özelliklerini çıkarır (avg_size, vb.) ve **önceden eğitilmiş J48 modeline** sokar.
+4. **Sonuç & Alarm:** ML Modeli, saniyeler içinde "ROCK_FALL" olduğuna karar verir. Arayüzde alarm tetiklenir ve yol trafiğe kapatılır.
+
+Bu sayede IoT cihazlarından çıkan ham byte'lar, ML ile anlamlı acil durum alarmlarına dönüşür.
 
 ---
 
